@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parkly Console</title>
+    <style>
+        :root {
+            --bg-color: #0b0f17;
+            --card-color: #121824;
+            --border-color: #222f47;
+            --text-main: #c9d1d9;
+            --text-muted: #6272a4;
+            --glow-vacant: #00ff66;
+            --glow-occupied: #ff3333;
+            --vip-gold: #ffb86c;
+        }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0; padding: 20px;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .header {
+            width: 100%; max-width: 1050px;
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 15px; margin-bottom: 20px;
+        }
+        .logo { font-size: 22px; font-weight: bold; }
+        .status-badge { background:#1f2937; border:1px solid #10b981; color:#10b981; padding:6px 12px; border-radius:20px; font-size:13px; font-weight:600; }
+        .view-panel {
+            width: 100%; max-width: 1050px;
+            background: var(--card-color);
+            border: 1px solid var(--border-color);
+            border-radius: 16px; padding: 25px;
+            box-sizing: border-box;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+        }
+        .hidden { display: none !important; }
+
+       /* ── PARKING MAP ── */
+        .scene-container {
+            width: 100%; display: flex; justify-content: flex-start;
+            padding: 30px 20px; background: #090d14;
+            border-radius: 12px; border: 1px solid #1b2436;
+            overflow-x: auto;
+        }
+        .parking-lot {
+            width: 940px; height: 400px;
+            min-width: 940px;
+            background: #1a1c23;
+            border: 4px solid #2d313f; border-radius: 8px;
+            position: relative;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+            margin: 0 auto;
+        }
+        .road-way-horizontal {
+            position: absolute; top: 155px; left: 0;
+            width: 100%; height: 90px; 
+            background: #121318;
+            border-top: 3px dashed #4f5464;
+            border-bottom: 3px dashed #4f5464;
+            display: flex; align-items: center; padding-left: 30px;
+            box-sizing: border-box;
+        }
+        .road-way-vertical {
+            position: absolute; top: 255px; left: 620px;
+            width: 130px; height: 145px;
+            background: #121318;
+            border-left: 3px dashed #4f5464;
+            border-right: 3px dashed #4f5464;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+        }
+        .road-way-vertical::before {
+            content: "▲\A ENT";
+            white-space: pre-wrap; text-align: center;
+            color: #4f5464; font-size: 12px; font-weight: 900;
+            line-height: 1.4; letter-spacing: 2px;
+        }
+        .slot {
+            position: absolute; width: 125px; height: 115px;
+            border: 2px solid var(--glow-vacant);
+            border-radius: 6px;
+            display: flex; flex-direction: column;
+            justify-content: space-between; padding: 12px;
+            box-sizing: border-box; font-weight: bold;
+            transition: all 0.3s ease-in-out;
+        }
+        .slot.vacant {
+            border-color: var(--glow-vacant);
+            background: rgba(0,255,102,0.03);
+            box-shadow: inset 0 0 12px rgba(0,255,102,0.08), 0 0 8px rgba(0,255,102,0.15);
+            color: #a6e22e;
+        }
+        .slot.occupied {
+            border-color: var(--glow-occupied);
+            background: rgba(255,51,51,0.06);
+            box-shadow: inset 0 0 15px rgba(255,51,51,0.15), 0 0 12px rgba(255,51,51,0.3);
+            color: var(--glow-occupied);
+        }
+        .slot-name { font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .slot-status-text { font-size: 10px; opacity: 0.8; letter-spacing: 1px; }
+        .car-icon { font-size: 24px; text-align: center; }
+
+        #slot-A1  { top: 25px; left: 775px; }   /* was A1 far left, now far right */
+#slot-A2  { top: 25px; left: 615px; }
+#slot-B1  { top: 25px; left: 455px; }   
+#slot-B2  { top: 25px; left: 295px; }
+#slot-VIP { top: 25px; left: 35px; width: 130px; border-style: double; border-width: 4px; }
+        .slot.vip-type.vacant {
+            border-color: var(--vip-gold); color: var(--vip-gold);
+            background: rgba(255,184,108,0.04);
+            box-shadow: 0 0 12px rgba(255,184,108,0.2);
+        }
+        .slot.vip-type.occupied {
+            border-color: var(--glow-occupied); color: var(--glow-occupied);
+            background: rgba(255,51,51,0.06);
+            box-shadow: 0 0 15px rgba(255,51,51,0.3);
+        }
+
+        /* ── ADMIN & RECEIPT ── */
+        .admin-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+        .btn-close { background:#1c2538; border:1px solid var(--border-color); color:var(--text-main); padding:10px 20px; border-radius:8px; cursor:pointer; font-weight:600; }
+        .btn-close:hover { background:#283752; }
+        .log-table { width:100%; border-collapse:collapse; margin-top:15px; }
+        .log-table th, .log-table td { border:1px solid var(--border-color); padding:12px; text-align:left; font-size:14px; }
+        .log-table th { background:#182030; color:var(--text-muted); }
+        .receipt-card { max-width:360px; margin:0 auto; background:#fff; color:#111; padding:30px; border-radius:4px; box-shadow:0 10px 25px rgba(0,0,0,0.5); font-family:'Courier New',monospace; }
+        .receipt-title { text-align:center; font-size:22px; font-weight:bold; margin-bottom:5px; }
+        .receipt-divider { border-top:2px dashed #111; margin:15px 0; }
+        .receipt-line { display:flex; justify-content:space-between; margin:8px 0; font-size:14px; }
+        .receipt-total { font-size:18px; font-weight:bold; margin-top:10px; }
+
+        /* ── ALERT BANNER ── */
+        #alertBanner {
+            display:none; width:100%; max-width:1050px;
+            background:#7f1d1d; border:1px solid #ff3333; color:#fca5a5;
+            padding:14px 20px; border-radius:10px; margin-bottom:15px;
+            font-weight:600; font-size:15px; text-align:center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="logo">🅿️ Parkly Console</div>
+    <div class="status-badge" id="streamStatus">Connecting...</div>
+</div>
+
+<div id="alertBanner"></div>
+
+<!-- PARKING MAP VIEW -->
+<div id="parkingDemoView" class="view-panel">
+    <h3 style="margin-top:0;text-align:center;font-size:20px;">Live Parking Layout Map</h3>
+    <p style="color:var(--text-muted);text-align:center;font-size:14px;margin-bottom:20px;">
+        <span id="slotsLeftLabel">4</span> <span id="slotsGrammar">slots</span> available
+    </p>
+    <div class="scene-container">
+        <div class="parking-lot">
+            <div class="road-way-horizontal"></div>
+            <div class="road-way-vertical"></div>
+            <div class="slot vacant" id="slot-A1">
+                <span class="slot-name">Slot A1</span>
+                <span class="car-icon" id="car-A1"></span>
+                <span class="slot-status-text" id="status-A1">VACANT</span>
+            </div>
+            <div class="slot vacant" id="slot-A2">
+                <span class="slot-name">Slot A2</span>
+                <span class="car-icon" id="car-A2"></span>
+                <span class="slot-status-text" id="status-A2">VACANT</span>
+            </div>
+            <div class="slot vacant" id="slot-B1">
+                <span class="slot-name">Slot B1</span>
+                <span class="car-icon" id="car-B1"></span>
+                <span class="slot-status-text" id="status-B1">VACANT</span>
+            </div>
+            <div class="slot vacant" id="slot-B2">
+                <span class="slot-name">Slot B2</span>
+                <span class="car-icon" id="car-B2"></span>
+                <span class="slot-status-text" id="status-B2">VACANT</span>
+            </div>
+            <div class="slot vacant vip-type" id="slot-VIP">
+                <span class="slot-name">★ VIP BAY ★</span>
+                <span class="car-icon" id="car-VIP"></span>
+                <span class="slot-status-text" id="status-VIP">READY</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ADMIN PANEL -->
+<div id="adminPanelView" class="view-panel hidden">
+    <div class="admin-header">
+        <h3 style="margin:0;color:#58a6ff;font-size:20px;">🛡️ Admin Terminal</h3>
+        <button class="btn-close" onclick="closeSubView()">← Back to Map</button>
+    </div>
+    <p style="color:var(--text-muted);font-size:14px;">Full system event log.</p>
+    <table class="log-table">
+        <thead>
+            <tr>
+                <th>User / Card</th>
+                <th>Event</th>
+                <th>Fee</th>
+                <th>Slots Left</th>
+                <th>Time</th>
+            </tr>
+        </thead>
+        <tbody id="adminLogEntries"></tbody>
+    </table>
+</div>
+
+<!-- RECEIPT VIEW -->
+<div id="userReceiptView" class="view-panel hidden" style="text-align:center;">
+    <h3 style="margin-top:0;color:#ff9800;font-size:20px;">🧾 Exit Receipt</h3>
+    <p style="color:var(--text-muted);margin-bottom:25px;font-size:14px;">Payment summary for current exit.</p>
+    <div class="receipt-card">
+        <div class="receipt-title">PARKLY SYSTEM</div>
+        <div style="text-align:center;font-size:11px;letter-spacing:1px;">AUTOMATED RECEIPT</div>
+        <div class="receipt-divider"></div>
+        <div class="receipt-line"><span>Card UID:</span><span id="rcpt-card" style="font-weight:bold;">-</span></div>
+        <div class="receipt-line"><span>User:</span><span id="rcpt-user">-</span></div>
+        <div class="receipt-line"><span>Duration:</span><span id="rcpt-duration">0 min</span></div>
+        <div class="receipt-divider"></div>
+        <div class="receipt-line"><span>Parking Fee:</span><span id="rcpt-fee">0 EGP</span></div>
+        <div class="receipt-line"><span>Penalties:</span><span id="rcpt-penalty">0 EGP</span></div>
+        <div class="receipt-divider"></div>
+        <div class="receipt-line receipt-total"><span>TOTAL:</span><span id="rcpt-total">0 EGP</span></div>
+    </div>
+    <button class="btn-close" style="margin-top:25px;" onclick="closeSubView()">Return to Map</button>
+</div>
+
+<script>
+    // ── Slot state updater ──
+    function updateSlot(slotId, isOccupied) {
+        const slotEl   = document.getElementById(`slot-${slotId}`);
+        const statusEl = document.getElementById(`status-${slotId}`);
+        const carEl    = document.getElementById(`car-${slotId}`);
+        if (!slotEl) return;
+        if (isOccupied) {
+            slotEl.classList.remove('vacant');
+            slotEl.classList.add('occupied');
+            statusEl.innerText = 'OCCUPIED';
+            carEl.innerText = '🚗';
+        } else {
+            slotEl.classList.remove('occupied');
+            slotEl.classList.add('vacant');
+            statusEl.innerText = (slotId === 'VIP') ? 'READY' : 'VACANT';
+            carEl.innerText = '';
+        }
+    }
+
+    function showView(viewId) {
+        ['parkingDemoView','adminPanelView','userReceiptView']
+            .forEach(id => document.getElementById(id).classList.add('hidden'));
+        document.getElementById(viewId).classList.remove('hidden');
+    }
+
+    function closeSubView() { showView('parkingDemoView'); }
+
+    function showAlert(msg) {
+        const b = document.getElementById('alertBanner');
+        b.innerText = msg;
+        b.style.display = 'block';
+        setTimeout(() => { b.style.display = 'none'; }, 8000);
+    }
+
+    function addAdminLog(data) {
+        const tbody = document.getElementById('adminLogEntries');
+        const feeStr = (data.fee || 0) > 0 ? `${data.fee} EGP` : '-';
+        const row = `<tr>
+            <td><strong>${data.userName || 'Unknown'}</strong> (${data.cardId || 'none'})</td>
+            <td style="color:#58a6ff;font-weight:600;">${data.event}</td>
+            <td>${feeStr}</td>
+            <td>${data.slotsLeft ?? '-'} / 4</td>
+            <td>${new Date().toLocaleTimeString()}</td>
+        </tr>`;
+        tbody.insertAdjacentHTML('afterbegin', row);
+    }
+
+    function processSystemEvent(data) {
+        console.log('Event:', data.event, data);
+
+        // Always update slot states if provided
+        if (data.slotStates) {
+            for (const [slotId, isOccupied] of Object.entries(data.slotStates)) {
+                updateSlot(slotId, isOccupied);
+            }
+            const s = data.slotsLeft ?? 0;
+document.getElementById('slotsLeftLabel').innerText = s;
+document.getElementById('slotsGrammar').innerText = s === 1 ? 'slot' : 'slots';
+        }
+
+        // Route by event
+        switch (data.event) {
+
+            case 'ADMIN_ACCESS':
+                addAdminLog(data);
+                showView('adminPanelView');
+                break;
+
+            case 'EXIT_PENDING_PAYMENT':
+            case 'PAYMENT_DONE':
+    document.getElementById('rcpt-card').innerText     = data.cardId    || 'N/A';
+    document.getElementById('rcpt-user').innerText     = data.userName  || 'Unknown';
+    document.getElementById('rcpt-duration').innerText = `${data.duration || 0} min`;
+    document.getElementById('rcpt-fee').innerText      = `${data.fee     || 0} EGP`;
+    document.getElementById('rcpt-penalty').innerText  = `${data.penalty || 0} EGP`;
+    document.getElementById('rcpt-total').innerText    = `${(data.fee||0)+(data.penalty||0)} EGP`;
+    showView('userReceiptView');
+    setTimeout(() => closeSubView(), 5000);  // ← auto return after 5 seconds
+    break;
+
+            case 'FIRE_ALARM':
+                showAlert('🔥 FIRE ALARM — Both gates opened! Evacuate immediately.');
+                break;
+
+            case 'UBER_OVERTIME_ALERT':
+                showAlert(`⚠️ Uber/Manual car exceeded 5 minutes! (${data.duration} min inside) Fees are being applied.`);
+                break;
+
+            case 'PENALTY':
+                showAlert(`⚠️ Penalty applied to ${data.userName || data.cardId} — car blocked gate too long.`);
+                break;
+
+            case 'VIP_ENTRY':
+                showAlert(`★ VIP car entered — no charge.`);
+                break;
+
+            case 'UBER_EXIT':
+                if ((data.fee || 0) > 0) {
+                    showAlert(`🚖 Uber exited — overtime fee: ${data.fee} EGP for ${data.duration} min.`);
+                }
+                break;
+        }
+
+        // Log everything in admin table
+        addAdminLog(data);
+    }
+
+// ── SSE stream ──
+    // Explicitly point to your backend server port
+    // ── SSE stream ──
+    let eventSource;
+
+    function connectToSystemStream() {
+        // FIXED: Swapped single quotes to BACKTICKS (``) so the URL calculates dynamically
+        const streamTarget = `${window.location.origin}/api/stream`;
+        console.log(`Connecting live stream to: ${streamTarget}`);
+        
+        eventSource = new EventSource(streamTarget);
+        const badge = document.getElementById('streamStatus');
+
+        eventSource.onopen = () => {
+            badge.innerText = 'Online • Live Stream OK';
+            badge.style.borderColor = '#10b981'; // Dynamic reset to Green border
+            badge.style.color = '#10b981';       // Dynamic reset to Green text
+        };
+
+        eventSource.onerror = (err) => {
+            console.error('SSE Stream Connection lost. Retrying in 3 seconds...', err);
+            badge.innerText = 'Stream Error';
+            badge.style.borderColor = '#ff3333'; // Crimson Red border
+            badge.style.color = '#ff3333';       // Crimson Red text
+            
+            // Safe cleanup: close the broken link and schedule an automated retry loop
+            eventSource.close();
+            setTimeout(connectToSystemStream, 3000);
+        };
+
+        eventSource.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                processSystemEvent(data);
+            } catch(err) {
+                console.error('Data compilation parse error:', err);
+            }
+        };
+    }
+
+    // Initialize layout stream connection instantly
+    connectToSystemStream();
+</script>
+</body>
+</html>
