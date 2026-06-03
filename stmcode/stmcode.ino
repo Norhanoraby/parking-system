@@ -111,12 +111,12 @@ int  cardSlot[4]       = {-1, -1, -1,-1};
 bool virtualSlot[4]    = {false, false, false, false};
 bool physicalSlot[4]   = {false, false, false, false};
 
-bool          cardInside[4]      = {false, false, false,false};
-unsigned long entryTime[4]       = {0, 0, 0,0};
-unsigned long exitTime[4]        = {0, 0, 0,0};
-unsigned long parkingDuration[4] = {0, 0, 0,0};
-int           parkingFee[4]      = {0, 0, 0,0};
-int           penaltyFee[4]      = {0, 0, 0,0};
+bool          cardInside[4]     = {false, false, false, false}; 
+unsigned long entryTime[4]      = {0, 0, 0, 0}; 
+unsigned long exitTime[4]       = {0, 0, 0, 0}; 
+unsigned long parkingDuration[4]= {0, 0, 0, 0}; 
+int           parkingFee[4]     = {0, 0, 0, 0}; 
+int           penaltyFee[4]     = {0, 0, 0, 0}; 
 
 // ===================== SLOT CONFIRM STATE =====================
 bool          waitingForSlotConfirm = false;
@@ -158,7 +158,7 @@ void lcdMsg(const char* l0, const char* l1) {
   lcd.clear();
   lcd.setCursor(0, 0); if (l0) lcd.print(l0);
   lcd.setCursor(0, 1); if (l1) lcd.print(l1);
-  lcdUnlock();  // FIXED: Changed typo from lcd.unlock() to the FreeRTOS release wrapper macro
+  lcdUnlock();
 }
 
 // ===================== UID HELPERS =====================
@@ -174,7 +174,7 @@ int getCardIndex(byte *uid) {
   if (compareUID(uid, card1)) return 0;
   if (compareUID(uid, card2)) return 1;
   if (compareUID(uid, card3)) return 2;
-  if (compareUID(uid, card4)) return 3; 
+  if (compareUID(uid, card4)) return 3;
   return -1;
 }
 
@@ -285,7 +285,7 @@ bool anyCarDetectedByIR() {
 void sendEventToESP(const char* eventType, int cardIndex, int fee, int penalty, unsigned long durationMin = 0) {
   char uidStr[12] = "none";
   if      (cardIndex >= 0 && cardIndex < 4) {
-    byte* card = (cardIndex == 0) ? card1 : (cardIndex == 1) ? card2 : (cardIndex == 2) ? card3 : card4; 
+byte* card = (cardIndex == 0) ? card1 : (cardIndex == 1) ? card2 : (cardIndex == 2) ? card3 : card4; 
     sprintf(uidStr, "%02X%02X%02X%02X", card[0], card[1], card[2], card[3]);
   }
   else if (cardIndex == -2) sprintf(uidStr, "%02X%02X%02X%02X", manualCard[0], manualCard[1], manualCard[2], manualCard[3]);
@@ -303,7 +303,10 @@ void sendEventToESP(const char* eventType, int cardIndex, int fee, int penalty, 
   SerialESP.print(",\"A2\":");  SerialESP.print(slotTakenByCar(1) ? "true" : "false");
   SerialESP.print(",\"B1\":");  SerialESP.print(slotTakenByCar(2) ? "true" : "false");
   SerialESP.print(",\"B2\":");  SerialESP.print(slotTakenByCar(3) ? "true" : "false");
-  SerialESP.print(",\"VIP\":"); SerialESP.print(slotOccupied_VIP ? "true" : "false");
+  
+  // FIXED: Dashboard will only mark VIP slot as fully occupied if it reads TRUE AND the VIP is actually inside.
+  SerialESP.print(",\"VIP\":"); SerialESP.print((slotOccupied_VIP && vipInside) ? "true" : "false");
+  
   SerialESP.println("}}");
   xSemaphoreGive(serialMutex);
 }
@@ -678,7 +681,7 @@ void checkRFIDReaders() {
 }
 
 // ============================================================================
-//                                    TASKS
+//                                   TASKS
 // ============================================================================
 
 void TaskControl(void *pv) {
@@ -773,17 +776,40 @@ void TaskSlots(void *pv) {
       slotDirty    = false;
     }
 
-    if (wrongParkingDetected) {
-      buzzerBeep(2);
-      if (!lcdBusy && currentMode == NO_CAR && !waitingForSlotConfirm) {
-        lcdMsg("SLOT OVERRIDDEN", "Warning Logged");
-        DLY(3000);
+    // ── FIXED: VIP UNAUTHORIZED PARKING HANDLER ────────────────────────────
+    bool vipViolation = false;
+    xSemaphoreTakeRecursive(stateMutex, portMAX_DELAY);
+    vipViolation = (slotOccupied_VIP && !vipInside);
+    xSemaphoreGiveRecursive(stateMutex);
+
+    if (vipViolation) {
+      // 1) Non-blocking buzzer toggle (50ms * 5 = 250ms half-period)
+      static uint8_t beepCount = 0;
+      beepCount++;
+      if (beepCount % 10 < 5) digitalWrite(BUZZER_PIN, HIGH);
+      else                    digitalWrite(BUZZER_PIN, LOW);
+
+      // 2) Show message on LCD
+      if (!lcdBusy && currentMode == NO_CAR && !waitingForSlotConfirm && !waitingForPayment) {
+        lcdMsg("VIP SLOT TAKEN", "Car Must Leave");
+      }
+    } else {
+      // 3) Default State: Make sure buzzer turns off when violation clears
+      digitalWrite(BUZZER_PIN, LOW);
+
+      if (wrongParkingDetected) {
+        buzzerBeep(2);
+        if (!lcdBusy && currentMode == NO_CAR && !waitingForSlotConfirm) {
+          lcdMsg("SLOT OVERRIDDEN", "Warning Logged");
+          DLY(3000);
+          showReadyMessage();
+        }
+      } else if (stateChanged && !lcdBusy && currentMode == NO_CAR
+                 && !waitingForSlotConfirm && !waitingForPayment) {
         showReadyMessage();
       }
-    } else if (stateChanged && !lcdBusy && currentMode == NO_CAR
-               && !waitingForSlotConfirm && !waitingForPayment) {
-      showReadyMessage();
     }
+    // ───────────────────────────────────────────────────────────────────────
 
     DLY(SLOT_CHECK_INTERVAL);
   }
@@ -799,8 +825,7 @@ void TaskSafety(void *pv) {
         digitalWrite(LED_PIN, LOW);
         entryServo.write(ENTRY_GATE_OPEN_ANGLE);
         exitServo.write(EXIT_GATE_OPEN_ANGLE);
-        
-        ESP("FIRE_ALARM", -1, 0, 0);
+        sendEventToESP("FIRE_ALARM", -1, 0, 0);
         lcdMsg("!!! FIRE ALERT", "Both Gates Open");
       }
       entryServo.write(ENTRY_GATE_OPEN_ANGLE);

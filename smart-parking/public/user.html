@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Driver Receipt</title>
+    <style>
+        body { font-family: monospace; background: #e9ecef; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .receipt { background: white; padding: 30px; width: 350px; border: 2px dashed #333; box-shadow: 5px 5px 15px rgba(0,0,0,0.2); }
+        h2 { text-align: center; margin-top: 0; }
+        .row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 16px; }
+        .total { font-size: 22px; font-weight: bold; text-align: center; margin-top: 20px; color: #d9534f; }
+        .auto-close { text-align: center; color: #888; font-size: 12px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="receipt" id="receiptBox">
+        <h2 id="welcomeMsg">Welcome!</h2>
+        <hr>
+        <div class="row"><span>Date:</span> <span id="r-date"></span></div>
+        <div class="row"><span>Driver:</span> <span id="r-alias"></span></div>
+        <div class="row"><span>Entry Time:</span> <span id="r-entry"></span></div>
+        
+        <div id="exitData" style="display: none;">
+            <div class="row"><span>Exit Time:</span> <span id="r-exit"></span></div>
+            <hr>
+            <div class="row"><span>Standard Fee:</span> <span id="r-fee"></span></div>
+            <div class="row" style="color: red;"><span>Penalty:</span> <span id="r-penalty"></span></div>
+            <div class="total">TOTAL: <span id="r-total"></span> EGP</div>
+        </div>
+        
+        <div class="auto-close">Returning to scanner in <span id="timer">8</span> seconds...</div>
+    </div>
+
+    <script>
+        const kioskData = JSON.parse(localStorage.getItem('kioskData'));
+        
+        if (!kioskData) {
+            window.location.href = 'index.html'; // If accessed directly, go back
+        } else {
+            const session = kioskData.data;
+            document.getElementById('welcomeMsg').innerText = kioskData.action === 'entry' ? 'Entry Authorized' : 'Exit Receipt';
+            document.getElementById('r-date').innerText = new Date().toLocaleDateString();
+            document.getElementById('r-alias').innerText = session.driverAlias;
+            document.getElementById('r-entry').innerText = new Date(session.entryTime).toLocaleTimeString();
+
+            if (kioskData.action === 'exit') {
+                document.getElementById('exitData').style.display = 'block';
+                document.getElementById('r-exit').innerText = new Date(session.exitTime).toLocaleTimeString();
+                document.getElementById('r-fee').innerText = session.fee + ' EGP';
+                document.getElementById('r-penalty').innerText = session.penalty + ' EGP';
+                document.getElementById('r-total').innerText = (session.fee + session.penalty);
+            }
+
+            // Auto-redirect back to scan page
+            let timeLeft = 8;
+            setInterval(() => {
+                timeLeft--;
+                document.getElementById('timer').innerText = timeLeft;
+                if (timeLeft <= 0) {
+                    localStorage.removeItem('kioskData');
+                    window.location.href = 'index.html';
+                }
+            }, 1000);
+        }
+    </script>
+</body>
+</html>

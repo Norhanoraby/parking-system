@@ -1,0 +1,117 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClient.h>
+#include <WiFiManager.h>        // tzapu/WiFiManager
+#include <LittleFS.h>
+
+// ---- Setup-hotspot name/password (shown only during configuration) ----
+const char* AP_NAME = "Parkly-Setup";
+const char* AP_PASS = "parkly123";       // must be >= 8 chars
+
+#define FLASH_BUTTON_PIN 0       // GPIO0 = onboard FLASH button (hold to reconfigure)
+
+// Server URL is editable from the phone setup page and saved to flash.
+char serverUrl[120] = "http://192.168.1.26:3000/api/event";   // default / last used
+bool shouldSaveConfig = false;
+
+void saveConfigCallback() { shouldSaveConfig = true; }
+
+// ---- persist the server URL in LittleFS so it survives reboots ----
+void loadServerUrl() {
+  if (!LittleFS.begin()) return;
+  if (LittleFS.exists("/server.txt")) {
+    File f = LittleFS.open("/server.txt", "r");
+    if (f) {
+      String s = f.readStringUntil('\n'); s.trim();
+      if (s.length() > 0 && s.length() < sizeof(serverUrl))
+        s.toCharArray(serverUrl, sizeof(serverUrl));
+      f.close();
+    }
+  }
+}
+void saveServerUrl() {
+  if (!LittleFS.begin()) return;
+  File f = LittleFS.open("/server.txt", "w");
+  if (f) { f.println(serverUrl); f.close(); }
+}
+
+// ---- run the WiFiManager portal (used at boot and on-demand) ----
+void runPortal(bool onDemand) {
+  WiFiManager wm;
+  wm.setDebugOutput(false);                 // keep the STM32 serial line clean
+  wm.setSaveConfigCallback(saveConfigCallback);
+
+  WiFiManagerParameter customServer(
+      "server", "Server URL (http://IP:3000/api/event)", serverUrl, sizeof(serverUrl) - 1);
+  wm.addParameter(&customServer);
+  wm.setConfigPortalTimeout(180);           // 3 min, then give up and reboot
+
+  bool ok;
+  if (onDemand) ok = wm.startConfigPortal(AP_NAME, AP_PASS);  // force the portal
+  else          ok = wm.autoConnect(AP_NAME, AP_PASS);        // auto, portal if needed
+
+  if (!ok) { delay(1000); ESP.restart(); }   // not configured in time -> retry
+
+  strncpy(serverUrl, customServer.getValue(), sizeof(serverUrl) - 1);
+  serverUrl[sizeof(serverUrl) - 1] = '\0';
+  if (shouldSaveConfig) { saveServerUrl(); shouldSaveConfig = false; }
+}
+
+void setup() {
+  Serial.begin(9600);
+  delay(500);
+  pinMode(FLASH_BUTTON_PIN, INPUT_PULLUP);
+
+  loadServerUrl();
+
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
+
+  runPortal(false);          // connect, or open setup hotspot if network unknown
+
+  Serial.println();
+  Serial.print("WiFi OK  IP: ");  Serial.println(WiFi.localIP());
+  Serial.print("Server:      ");  Serial.println(serverUrl);
+  Serial.println("ESP READY - UART MODE");
+}
+
+void loop() {
+  // Hold FLASH button ~3 s to reopen the setup hotspot (change WiFi/server)
+  if (digitalRead(FLASH_BUTTON_PIN) == LOW) {
+    unsigned long t = millis();
+    while (digitalRead(FLASH_BUTTON_PIN) == LOW) {
+      if (millis() - t > 3000) {
+        Serial.println("Opening setup hotspot...");
+        runPortal(true);
+        Serial.print("WiFi OK  IP: "); Serial.println(WiFi.localIP());
+        break;
+      }
+      delay(10);
+    }
+  }
+
+  // Forward STM32 JSON lines to the server
+  if (Serial.available()) {
+    String json = Serial.readStringUntil('\n');
+    json.trim();
+    if (json.length() > 0 && json.startsWith("{")) {
+      sendJsonToServer(json);
+    }
+  }
+}
+
+void sendJsonToServer(String json) {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi down - skipping");
+    return;
+  }
+  WiFiClient client;
+  HTTPClient http;
+  http.begin(client, serverUrl);
+  http.addHeader("Content-Type", "application/json");
+  int code = http.POST(json);
+  Serial.print("POST -> ");
+  Serial.println(code);                      // 200/201 = saved; <0 = couldn't reach server
+  http.end();
+}
