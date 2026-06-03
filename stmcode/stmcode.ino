@@ -799,7 +799,8 @@ void TaskSafety(void *pv) {
         digitalWrite(LED_PIN, LOW);
         entryServo.write(ENTRY_GATE_OPEN_ANGLE);
         exitServo.write(EXIT_GATE_OPEN_ANGLE);
-        sendEventToESP("FIRE_ALARM", -1, 0, 0);
+        
+        ESP("FIRE_ALARM", -1, 0, 0);
         lcdMsg("!!! FIRE ALERT", "Both Gates Open");
       }
       entryServo.write(ENTRY_GATE_OPEN_ANGLE);
