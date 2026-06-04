@@ -5,12 +5,11 @@ const cors = require('cors');
 const path = require('path');
 
 const app = express();
+
 // Dynamic CORS Reflection Middleware to allow uninterrupted streaming across layout interfaces
 app.use(cors({
   origin: function (origin, callback) {
-    // Allows requests with no origin (like local post tools, embedded devices, or local files)
     if (!origin) return callback(null, true);
-    // Dynamically approves the incoming web origin context
     return callback(null, true);
   },
   credentials: true,
@@ -24,12 +23,27 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'dashboard.html'));
 });
 
+// ---- FIXED SSE STREAM ROUTE ----
 app.get('/api/stream', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  
+  // Force headers to flush immediately so Chrome changes status from "Pending" to "Active"
+  if (res.flushHeaders) {
+    res.flushHeaders();
+  } else if (res.flush) {
+    res.flush();
+  }
+
+  // Send an immediate SSE comment line to break the browser response buffer
+  res.write(': open\n\n');
+
   clients.push(res);
-  req.on('close', () => { clients = clients.filter(c => c !== res); });
+  
+  req.on('close', () => { 
+    clients = clients.filter(c => c !== res); 
+  });
 });
 
 mongoose.connect(process.env.MONGODB_URI)
@@ -73,6 +87,8 @@ app.post('/api/event', async (req, res) => {
     await log.save();
 
     const payload = { event, cardId, userName, fee, penalty, duration, slotsLeft, slotStates };
+    
+    // Broadcast updates safely to all active dashboard interfaces
     clients.forEach(client => client.write(`data: ${JSON.stringify(payload)}\n\n`));
 
     res.json({ success: true, userName });
