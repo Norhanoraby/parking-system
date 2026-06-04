@@ -11,7 +11,7 @@ const char* AP_PASS = "parkly123";       // must be >= 8 chars
 #define FLASH_BUTTON_PIN 0       // GPIO0 = onboard FLASH button (hold to reconfigure)
 
 // Server URL is editable from the phone setup page and saved to flash.
-char serverUrl[120] = "http://192.168.1.26:3000/api/event";   // default / last used
+char serverUrl[120] = "http://192.168.137.1:3000/api/event";   // default / last used
 bool shouldSaveConfig = false;
 
 void saveConfigCallback() { shouldSaveConfig = true; }
@@ -67,6 +67,8 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
+  LittleFS.begin();
+  LittleFS.format();
 
   runPortal(false);          // connect, or open setup hotspot if network unknown
 
@@ -74,6 +76,7 @@ void setup() {
   Serial.print("WiFi OK  IP: ");  Serial.println(WiFi.localIP());
   Serial.print("Server:      ");  Serial.println(serverUrl);
   Serial.println("ESP READY - UART MODE");
+  
 }
 
 void loop() {
